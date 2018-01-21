@@ -10,9 +10,26 @@ import json
 import pandas
 
 
-''' This Function gets Kline data from Binance '''
 
-def get_kline(symbol, interval, start=None, end=None, limit=None):
+def safety(url, expected_str, req_type='requests.get', req_name='Binance'):
+    print(url)
+    funk = req_type + "('" + url + "')"
+    bc = 0
+    while 1:
+        try:
+            resp = eval(funk)
+            if expected_str in resp.text:
+                break
+        except Exception as e:
+            print(e)
+            bc += 1
+            if bc >= 5:
+                raise EnvironmentError(req_name + ' Request Failed')
+    return resp
+
+
+''' This Function gets Kline data from Binance '''
+def get_kline(symbol, interval='1m', start=None, end=None, limit=None):
     valid_intervals = ['1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w', '1M']
     if interval not in valid_intervals:
         raise TypeError("""Invalid Metric. Please select from:
@@ -31,19 +48,8 @@ def get_kline(symbol, interval, start=None, end=None, limit=None):
         url += '&endTime=' + str(end)
     if limit:
         url += '&limit=' + str(limit)
-    print(url)
 
-    bc = 0
-    while 1:
-        try:
-            resp = requests.get(url)
-            if '[[' in resp.text:
-                break
-        except Exception as e:
-            print(e)
-            bc += 1
-            if bc >= 5:
-                raise EnvironmentError('Kline Request Failed')
+    resp = safety(url, '[[', req_name='Kline')
 
     '''  Example output.  As seen on Binance
 
@@ -84,25 +90,26 @@ def get_kline(symbol, interval, start=None, end=None, limit=None):
     return out_frame
 
 
+''' Use to build historic Kline data '''
 def kline_combine(symbol, interval, num_intervals, start=None, end=None, limit=None):
 
     ' 60,000 = 1 sec '
     interval_dict = {
-                    '1m': 60 * 60000,
-                    '3m': 60 * 60000 * 3,
-                    '5m': 60 * 60000 * 5,
-                    '15m': 60 * 60000 * 15,
-                    '30m': 60 * 60000 * 30,
-                    '1h': 60 * 60000 * 60,
-                    '2h': 60 * 60000 * 60 * 2,
-                    '4h': 60 * 60000 * 60 * 4,
-                    '6h': 60 * 60000 * 60 * 6,
-                    '8h': 60 * 60000 * 60 * 8,
-                    '12h': 60 * 60000 * 60 * 12,
-                    '1d': 60 * 60000 * 60 * 24,
-                    '3d': 60 * 60000 * 60 * 24 * 3,
-                    '1w': 60 * 60000 * 60 * 24 * 7,
-                    '1M': 60 * 60000 * 60 * 24 * 31,  # ??? 31 day months ?????
+                    '1m': 60000,
+                    '3m': 60000 * 3,
+                    '5m': 60000 * 5,
+                    '15m': 60000 * 15,
+                    '30m': 60000 * 30,
+                    '1h': 60000 * 60,
+                    '2h': 60000 * 60 * 2,
+                    '4h': 60000 * 60 * 4,
+                    '6h': 60000 * 60 * 6,
+                    '8h': 60000 * 60 * 8,
+                    '12h': 60000 * 60 * 12,
+                    '1d': 60000 * 60 * 24,
+                    '3d': 60000 * 60 * 24 * 3,
+                    '1w': 60000 * 60 * 24 * 7,
+                    '1M': 60000 * 60 * 24 * 31,  # ??? 31 day months ????? Prolly should be tested at some point :/
                     }
 
     int_length = interval_dict[interval]
@@ -122,7 +129,42 @@ def kline_combine(symbol, interval, num_intervals, start=None, end=None, limit=N
     return out_frame
 
 
-data = kline_combine(symbol='XRPETH', interval='5m', num_intervals=3)
+''' Returns a Dictionary of current Prices '''
+def get_all_prices():
+    url = 'https://api.binance.com/api/v1/ticker/allPrices'
+    resp = safety(url, expected_str='symbol', req_name='All_Price')
+        
+    data = json.loads(resp.text)
+    
+    out_dict = {}
+    for coin in data:
+        for i in coin:
+            out_dict[coin['symbol']] = coin['price']
+    
+    return out_dict
+
+
+''' Returns a Dictionary of current Bid/Ask '''
+def get_bidAsk():
+    url = 'https://api.binance.com/api/v1/ticker/allBookTickers'
+    resp = safety(url, expected_str='symbol', req_name='All_BidAsk')
+    data = json.loads(resp.text)
+    
+    out_dict = {}
+    for coin in data:
+        out_dict[coin['symbol']] = {
+                                    'bidPrice': coin['bidPrice'],
+                                    'bidQty': coin['bidQty'],
+                                    'askPrice': coin['askPrice'],
+                                    'askQty': coin['askQty'],
+                                    }
+    
+    return out_dict
+
+
+price_data = get_all_prices()
+bidAsk_data = get_bidAsk()
+kline_data = kline_combine(symbol='XRPETH', interval='5m', num_intervals=3)
 
 
 #import asyncio
